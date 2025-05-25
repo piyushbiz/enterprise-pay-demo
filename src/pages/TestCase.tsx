@@ -1,8 +1,9 @@
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ArrowLeft, CheckCircle, XCircle, Clock, User, Calendar, FileText, Play } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useState } from "react";
@@ -11,6 +12,8 @@ const TestCase = () => {
   const { id } = useParams();
   const [currentStep, setCurrentStep] = useState(0);
   const [stepStatuses, setStepStatuses] = useState<string[]>([]);
+  const [stepInputs, setStepInputs] = useState<Record<number, Record<string, string>>>({});
+  const [executionResults, setExecutionResults] = useState<Record<number, string>>({});
 
   // Mock test case data - in real app this would come from API
   const testCase = {
@@ -33,28 +36,98 @@ const TestCase = () => {
       {
         step: 1,
         action: "User should enter payment details",
-        data: "Amount: $250.00, From: Checking (****1234), To: Savings (****5678), Memo: 'Monthly transfer'",
+        inputs: [
+          { name: "amount", label: "Amount ($)", placeholder: "250.00", type: "number" },
+          { name: "fromAccount", label: "From Account", placeholder: "Checking (****1234)", type: "text" },
+          { name: "toAccount", label: "To Account", placeholder: "Savings (****5678)", type: "text" },
+          { name: "memo", label: "Memo", placeholder: "Monthly transfer", type: "text" }
+        ],
         expected: "Payment form validates all fields and displays confirmation screen with transaction summary"
       },
       {
         step: 2,
         action: "System should successfully submit the payment",
-        data: "User clicks 'Submit Payment' button",
+        inputs: [
+          { name: "confirmSubmit", label: "Confirm Submission", placeholder: "Click Submit Payment", type: "text" }
+        ],
         expected: "Success message should get displayed with payment confirmation"
       },
       {
         step: 3,
         action: "User should make note of the payment ID",
-        data: "Payment ID displayed on success screen",
+        inputs: [
+          { name: "paymentId", label: "Payment ID", placeholder: "PAY-ACH-20240115-001234", type: "text" }
+        ],
         expected: "Payment ID format: PAY-ACH-YYYYMMDD-XXXXXX (e.g., PAY-ACH-20240115-001234)"
       },
       {
         step: 4,
         action: "System should display payment status",
-        data: "Check payment status in transaction history",
+        inputs: [
+          { name: "statusCheck", label: "Check Status", placeholder: "View in transaction history", type: "text" }
+        ],
         expected: "Payment status should display as 'Entered' in the transaction list"
       }
     ]
+  };
+
+  const updateStepInput = (stepIndex: number, inputName: string, value: string) => {
+    setStepInputs(prev => ({
+      ...prev,
+      [stepIndex]: {
+        ...prev[stepIndex],
+        [inputName]: value
+      }
+    }));
+  };
+
+  const simulateStep = (stepIndex: number) => {
+    const step = testCase.steps[stepIndex];
+    const inputs = stepInputs[stepIndex] || {};
+    
+    // Simulate different outcomes based on step and inputs
+    let result = "";
+    let status: 'pass' | 'fail' = 'pass';
+    
+    switch (stepIndex) {
+      case 0: // Payment details entry
+        if (inputs.amount && parseFloat(inputs.amount) > 0 && inputs.fromAccount && inputs.toAccount) {
+          result = `✅ Payment details validated successfully!\nAmount: $${inputs.amount}\nFrom: ${inputs.fromAccount}\nTo: ${inputs.toAccount}\nMemo: ${inputs.memo || 'N/A'}`;
+        } else {
+          result = "❌ Validation failed: Please fill all required fields with valid data";
+          status = 'fail';
+        }
+        break;
+      case 1: // Payment submission
+        if (stepStatuses[0] === 'pass') {
+          result = "✅ Payment submitted successfully!\nConfirmation: Your payment has been processed";
+        } else {
+          result = "❌ Cannot submit payment: Previous step failed";
+          status = 'fail';
+        }
+        break;
+      case 2: // Payment ID note
+        if (stepStatuses[1] === 'pass') {
+          const paymentId = `PAY-ACH-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.random().toString().slice(-6)}`;
+          result = `✅ Payment ID generated: ${paymentId}\nPlease save this ID for your records`;
+          updateStepInput(stepIndex, 'paymentId', paymentId);
+        } else {
+          result = "❌ Cannot generate Payment ID: Payment not submitted";
+          status = 'fail';
+        }
+        break;
+      case 3: // Status check
+        if (stepStatuses[2] === 'pass') {
+          result = "✅ Payment status: ENTERED\nTransaction visible in history";
+        } else {
+          result = "❌ Cannot check status: Payment not processed";
+          status = 'fail';
+        }
+        break;
+    }
+    
+    setExecutionResults(prev => ({ ...prev, [stepIndex]: result }));
+    executeStep(stepIndex, status);
   };
 
   const executeStep = (stepIndex: number, status: 'pass' | 'fail') => {
@@ -153,12 +226,13 @@ const TestCase = () => {
             {/* Test Steps */}
             <Card className="bg-white/70 backdrop-blur-sm border-0 shadow-lg">
               <CardHeader>
-                <CardTitle className="text-xl text-slate-900">Test Steps</CardTitle>
-                <CardDescription>Execute each step and mark as Pass/Fail</CardDescription>
+                <CardTitle className="text-xl text-slate-900">Interactive Test Simulation</CardTitle>
+                <CardDescription>Enter test data and execute each step to simulate the testing process</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {testCase.steps.map((step, index) => {
                   const status = getStepStatus(index);
+                  const isActive = status === 'current' || status === 'passed';
                   return (
                     <div key={index} className={`p-6 rounded-lg border-2 transition-all duration-300 ${
                       status === 'current' ? 'border-blue-200 bg-blue-50/50' :
@@ -176,50 +250,72 @@ const TestCase = () => {
                              status === 'failed' ? 'Failed' : 'Pending'}
                           </Badge>
                         </div>
-                        {status === 'current' && (
-                          <div className="flex space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-green-700 border-green-300 hover:bg-green-50"
-                              onClick={() => executeStep(index, 'pass')}
-                            >
-                              Pass
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-700 border-red-300 hover:bg-red-50"
-                              onClick={() => executeStep(index, 'fail')}
-                            >
-                              Fail
-                            </Button>
-                          </div>
+                        {isActive && (
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700"
+                            onClick={() => simulateStep(index)}
+                          >
+                            Simulate Step
+                          </Button>
                         )}
                       </div>
                       
-                      <div className="space-y-3 text-sm">
+                      <div className="space-y-4 text-sm">
                         <div>
                           <span className="font-medium text-slate-900">Action: </span>
                           <span className="text-slate-700">{step.action}</span>
                         </div>
-                        {step.data && (
-                          <div>
-                            <span className="font-medium text-slate-900">Test Data: </span>
-                            <span className="text-slate-700">{step.data}</span>
+
+                        {/* Input Fields */}
+                        {isActive && step.inputs && (
+                          <div className="bg-slate-50 p-4 rounded-lg">
+                            <h4 className="font-medium text-slate-900 mb-3">Test Data Inputs:</h4>
+                            <div className="grid gap-3">
+                              {step.inputs.map((input, inputIndex) => (
+                                <div key={inputIndex} className="space-y-1">
+                                  <Label htmlFor={`step-${index}-${input.name}`} className="text-sm">
+                                    {input.label}
+                                  </Label>
+                                  <Input
+                                    id={`step-${index}-${input.name}`}
+                                    type={input.type}
+                                    placeholder={input.placeholder}
+                                    value={stepInputs[index]?.[input.name] || ''}
+                                    onChange={(e) => updateStepInput(index, input.name, e.target.value)}
+                                    className="bg-white"
+                                  />
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
+
                         <div>
                           <span className="font-medium text-slate-900">Expected Result: </span>
                           <span className="text-slate-700">{step.expected}</span>
                         </div>
+
+                        {/* Execution Results */}
+                        {executionResults[index] && (
+                          <div className="bg-slate-100 p-4 rounded-lg">
+                            <h4 className="font-medium text-slate-900 mb-2">Execution Result:</h4>
+                            <pre className="text-sm text-slate-700 whitespace-pre-wrap">
+                              {executionResults[index]}
+                            </pre>
+                          </div>
+                        )}
                       </div>
 
                       {stepStatuses[index] === 'fail' && (
                         <div className="mt-4">
+                          <Label htmlFor={`failure-notes-${index}`} className="text-sm font-medium text-red-700">
+                            Failure Notes
+                          </Label>
                           <Textarea
+                            id={`failure-notes-${index}`}
                             placeholder="Enter failure notes or defect details..."
-                            className="bg-red-50 border-red-200"
+                            className="bg-red-50 border-red-200 mt-1"
                           />
                         </div>
                       )}
